@@ -364,6 +364,32 @@ jobs:
             FEX/Data/CMake/LinkerGC.cmake
           grep -n "RELEASE" FEX/Data/CMake/LinkerGC.cmake
 
+      - name: Patch FEX AddLibrary to link FEXCore_Base on Apple
+        if: steps.fex-cache.outputs.cache-hit != 'true'
+        run: |
+          # FEXCore/Source/CMakeLists.txt builds FEXCore/FEXCore_shared from
+          # $<TARGET_OBJECTS:FEXCore_object> only, which does NOT propagate
+          # FEXCore_object's transitively linked libraries (fmt, xxhash,
+          # cephes_128bit, FEXHeaderUtils, CodeEmitter — all pulled in via
+          # FEXCore_Base). FEX papers over this for MINGW by explicitly
+          # re-linking FEXCore_Base in AddLibrary(), but Linux never notices
+          # because ld allows undefined symbols in a shared lib by default.
+          # Apple's ld64 does not, so libFEXCore.dylib fails with dozens of
+          # "Undefined symbols" (fmt::, XXH3_64bits, cephes_128bit::*,
+          # extF80_*, FEXCore::Config::*, LogMan::Msg::* — all FEXCore_Base
+          # or its LIBS). Extend the existing MINGW-only fix to APPLE too.
+          python3 - <<'PY'
+          import pathlib
+          p = pathlib.Path("FEX/FEXCore/Source/CMakeLists.txt")
+          s = p.read_text()
+          old = "  if (MINGW)\n    target_link_libraries(${Name} PRIVATE FEXCore_Base)\n  endif()"
+          new = "  if (MINGW OR APPLE)\n    target_link_libraries(${Name} PRIVATE FEXCore_Base)\n  endif()"
+          assert old in s, "AddLibrary MINGW block not found — FEX source layout changed"
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("patched AddLibrary() to link FEXCore_Base on Apple too")
+          PY
+
       - name: Build FEX for iOS
         if: steps.fex-cache.outputs.cache-hit != 'true'
         run: |
