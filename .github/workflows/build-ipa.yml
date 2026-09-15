@@ -39,18 +39,23 @@ jobs:
         run: |
           brew install cmake ninja meson pkg-config bison gnutls
           echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
-          # Wine's configure probes gnutls with pkg-config, but on this image
-          # gnutls/gnutls.h resolves from a default include path while
-          # `-lgnutls` does not. That makes HAVE_GNUTLS_CIPHER_INIT get
-          # defined while GNUTLS_CFLAGS ends up empty (WINE_CHECK_SONAME's
-          # not-found branch resets it), so `make` later dies on
+          # Wine's gnutls probe defines HAVE_GNUTLS_CIPHER_INIT from the
+          # header test, but its WINE_CHECK_SONAME link test runs
+          # `LIBS="-lgnutls $GNUTLS_LIBS ..."`, i.e. a bare -lgnutls BEFORE
+          # any -L path, so it fails and its not-found branch resets
+          # GNUTLS_CFLAGS="". make then dies on
           # ../dlls/bcrypt/gnutls.c:34: 'gnutls/gnutls.h' file not found.
-          # Pin GNUTLS_CFLAGS/GNUTLS_LIBS to the Homebrew keg so configure and
-          # make agree, and so the host build-macos/include/config.h keeps
-          # gnutls enabled for the iOS bcrypt/secur32 unixlibs.
-          echo "PKG_CONFIG_PATH=$(brew --prefix gnutls)/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
-          echo "GNUTLS_CFLAGS=-I$(brew --prefix gnutls)/include" >> "$GITHUB_ENV"
-          echo "GNUTLS_LIBS=-L$(brew --prefix gnutls)/lib -lgnutls" >> "$GITHUB_ENV"
+          # LDFLAGS is expanded before LIBS by autoconf, so putting the
+          # Homebrew keg on LDFLAGS lets the soname test link; CPPFLAGS is a
+          # belt-and-braces include path for the compile itself. This keeps
+          # gnutls enabled in build-macos's config.h for the iOS
+          # bcrypt/secur32 unixlibs.
+          GNUTLS_PREFIX="$(brew --prefix gnutls)"
+          echo "LDFLAGS=-L${GNUTLS_PREFIX}/lib" >> "$GITHUB_ENV"
+          echo "CPPFLAGS=-I${GNUTLS_PREFIX}/include" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=${GNUTLS_PREFIX}/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
+          echo "GNUTLS_CFLAGS=-I${GNUTLS_PREFIX}/include" >> "$GITHUB_ENV"
+          echo "GNUTLS_LIBS=-L${GNUTLS_PREFIX}/lib -lgnutls" >> "$GITHUB_ENV"
 
       - name: Sanity check toolchain versions (fail fast)
         run: |
