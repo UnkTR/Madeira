@@ -98,7 +98,12 @@ jobs:
       # the best-effort reconstruction. Observed CI failures and fixes:
       #   #4 bison < 3       -> brew bison + GITHUB_PATH (see steps above)
       #   #5 freetype        -> --without-freetype
-      #   #6 gnutls header   -> GNUTLS_CFLAGS/GNUTLS_LIBS pinned to brew keg
+      #   #6 gnutls header   -> CPPFLAGS/LDFLAGS + ac_cv_lib_soname_gnutls
+      #   #9 -Bsymbolic      -> drop --host=aarch64-apple-ios: configure.ac
+      #                         only takes the Darwin branch (which sets
+      #                         -dynamiclib instead of ELF -Bsymbolic/-soname)
+      #                         when $host_os is darwin*, so build-macos must
+      #                         be a native macOS build.
       # KNOWN GAP: build/ntdll-unix/build.sh also expects
       # wine/build-arm64ec/include (widl-generated dwrite.h/dwrite_3.h),
       # which this step does not produce yet.
@@ -108,7 +113,6 @@ jobs:
         run: |
           mkdir -p build-macos && cd build-macos
           ../configure \
-            --host=aarch64-apple-ios \
             --enable-archs=aarch64,i386 \
             --with-mingw="$GITHUB_WORKSPACE/toolchains/llvm-mingw-${LLVM_MINGW_RELEASE}-ucrt-macos-universal/bin/clang" \
             --without-x --without-opengl --without-freetype --disable-tests
