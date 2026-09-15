@@ -56,6 +56,16 @@ jobs:
           echo "PKG_CONFIG_PATH=${GNUTLS_PREFIX}/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
           echo "GNUTLS_CFLAGS=-I${GNUTLS_PREFIX}/include" >> "$GITHUB_ENV"
           echo "GNUTLS_LIBS=-L${GNUTLS_PREFIX}/lib -lgnutls" >> "$GITHUB_ENV"
+          # The -lgnutls link probe keeps failing (it tries the bare lib
+          # before any -L), so config.h never gets SONAME_LIBGNUTLS and
+          # dlls/bcrypt/gnutls.c:385 fails with "use of undeclared
+          # identifier 'SONAME_LIBGNUTLS'". Seed the autoconf cache with the
+          # real Homebrew soname instead; the iOS gnutls shim only needs the
+          # name to contain "gnutls".
+          GNUTLS_SONAME="$(otool -D "${GNUTLS_PREFIX}/lib/libgnutls.dylib" | tail -n 1)"
+          GNUTLS_SONAME="${GNUTLS_SONAME##*/}"
+          echo "ac_cv_lib_soname_gnutls=${GNUTLS_SONAME}" >> "$GITHUB_ENV"
+          echo "gnutls soname: ${GNUTLS_SONAME}"
 
       - name: Sanity check toolchain versions (fail fast)
         run: |
