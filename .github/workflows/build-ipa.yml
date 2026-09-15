@@ -162,6 +162,16 @@ jobs:
         run: bash build/freetype-ios/build.sh
 
       # ---------------------------------------------------------------
+      # GnuTLS stack (GMP -> nettle/hogweed -> GnuTLS) cross-built as
+      # iOS-aarch64 static libs into toolchains/gnutls-ios. Consumed by the
+      # bcrypt/secur32/crypt32 unixlibs of libntdll_unix.a (and by
+      # build/crypto-unix/gen_gnutls_symtab.sh). Sources are the tarballs
+      # vendored under build/gnutls-ios/src/.
+      # ---------------------------------------------------------------
+      - name: Build GnuTLS stack for iOS
+        run: bash build/gnutls-ios/build.sh
+
+      # ---------------------------------------------------------------
       # LLVM 15.0.7 cross-built for iOS-aarch64 (feeds dxmt-ios's
       # libdxmt_combined.a). Two-stage build per build/dxmt-ios/README.md.
       # This is the single most expensive step (can be 1-2+ hours) so
