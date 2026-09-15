@@ -422,6 +422,15 @@ jobs:
           start = s.index("/* iOS-Madeira ml316: report ExitToX64 FFS bypasses")
           end = s.index("/* iOS-Madeira: refuse to compile obviously-invalid guest RIPs", start)
           p.write_text(s[:start] + "#ifdef FEX_IOS_HOST\n" + s[start:end] + "#endif\n" + s[end:])
+
+          # Core.cpp: rpm_cas_snapshot_take() is a host-bridge hook with no
+          # definition anywhere in FEX (or the app); its caller is a
+          # diagnostic, so provide a no-op definition rather than a dangling
+          # undefined symbol that would fail the app link.
+          s = p.read_text()
+          s = s.replace("int rpm_cas_snapshot_take(struct rpm_cas_snapshot* out);",
+                        "int rpm_cas_snapshot_take(struct rpm_cas_snapshot* out) { (void)out; return 0; }", 1)
+          p.write_text(s)
           print("patched FEX iOS diagnostics")
           PY
           cmake -S FEX -B FEX/build-ios -G Ninja \
