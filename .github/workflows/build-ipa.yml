@@ -35,8 +35,22 @@ jobs:
           sudo xcode-select -s "${LATEST:-/Applications/Xcode.app}"
           xcodebuild -version
 
-      - name: Install cmake/ninja/meson (build deps for freetype/dxmt/llvm)
-        run: brew install cmake ninja meson pkg-config
+      - name: Install cmake/ninja/meson/bison (build deps)
+        run: |
+          brew install cmake ninja meson pkg-config bison
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+
+      - name: Sanity check toolchain versions (fail fast)
+        run: |
+          echo "bison: $(bison --version | head -1)"
+          BISON_MAJOR=$(bison --version | head -1 | grep -oE '[0-9]+' | head -1)
+          if [ "$BISON_MAJOR" -lt 3 ]; then
+            echo "::error::bison is still < 3.0 — PATH isn't picking up the brew version"
+            exit 1
+          fi
+          echo "cmake: $(cmake --version | head -1)"
+          echo "ninja: $(ninja --version)"
+          echo "meson: $(meson --version)"
 
       # ---------------------------------------------------------------
       # Metal Toolchain — required by dxmt-ios. This is the biggest
@@ -141,12 +155,7 @@ jobs:
             --with-mingw="$GITHUB_WORKSPACE/toolchains/llvm-mingw-${LLVM_MINGW_RELEASE}-ucrt-macos-universal/bin/clang" \
             --without-x --without-opengl --disable-tests
           make -j"$(sysctl -n hw.ncpu)"
-          
-      - name: Install newer bison
-        run: |
-          brew install bison
-          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
-          
+
       - name: Build ntdll-unix
         run: bash build/ntdll-unix/build.sh
 
