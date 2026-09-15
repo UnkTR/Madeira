@@ -35,10 +35,14 @@ jobs:
           sudo xcode-select -s "${LATEST:-/Applications/Xcode.app}"
           xcodebuild -version
 
-      - name: Install cmake/ninja/meson/bison + gnutls (build deps)
+      - name: Install cmake/ninja/meson/bison + gnutls + llvm (build deps)
         run: |
-          brew install cmake ninja meson pkg-config bison gnutls
+          brew install cmake ninja meson pkg-config bison gnutls llvm
           echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          # build/wineserver/build.sh hardcodes a Homebrew llvm-objcopy path
+          # and only falls back to it when `command -v llvm-objcopy` fails;
+          # put brew llvm on PATH so the symbol-rename sweep finds it.
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
           # Wine's gnutls probe defines HAVE_GNUTLS_CIPHER_INIT from the
           # header test, but its WINE_CHECK_SONAME link test runs
           # `LIBS="-lgnutls $GNUTLS_LIBS ..."`, i.e. a bare -lgnutls BEFORE
@@ -79,6 +83,7 @@ jobs:
           echo "ninja: $(ninja --version)"
           echo "meson: $(meson --version)"
           echo "gnutls: $(pkg-config --modversion gnutls)"
+          echo "llvm-objcopy: $(llvm-objcopy --version | head -1)"
 
       # ---------------------------------------------------------------
       # llvm-mingw prebuilt toolchain — wine's configure needs this for
