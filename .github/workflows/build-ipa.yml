@@ -399,6 +399,9 @@ jobs:
           # with a no-op.
           python3 - <<'PY'
           import pathlib
+
+          # Arm64.cpp: IosLogUnimplementedCASPAL() is a diagnostic that calls
+          # Windows APIs with no non-Windows guard; replace it with a no-op.
           p = pathlib.Path("FEX/FEXCore/Source/Utils/ArchHelpers/Arm64.cpp")
           s = p.read_text()
           start = s.index("static void IosLogUnimplementedCASPAL")
@@ -406,7 +409,19 @@ jobs:
           stub = ("static void IosLogUnimplementedCASPAL(uint32_t Size, uint64_t* GPRs, uint32_t AddressReg) {\n"
                   "  (void)Size; (void)GPRs; (void)AddressReg;\n}\n\n")
           p.write_text(s[:start] + stub + s[end:])
-          print("patched IosLogUnimplementedCASPAL")
+
+          # Core.cpp: the ml316/ml306 reporters use IosFfsBypassLog /
+          # IosCbEntryLog, which are declared only under FEX_IOS_HOST, but the
+          # block itself is unguarded. FEX_IOS_HOST is intentionally NOT set
+          # here (a plain iOS FEXCore: the ARM64EC alias hooks live in
+          # Source/Windows/ARM64EC and are not linked by the app), so guard
+          # the block to match.
+          p = pathlib.Path("FEX/FEXCore/Source/Interface/Core/Core.cpp")
+          s = p.read_text()
+          start = s.index("iOS-Madeira ml316: report ExitToX64 FFS bypasses")
+          end = s.index("iOS-Madeira: refuse to compile obviously-invalid guest RIPs", start)
+          p.write_text(s[:start] + "#ifdef FEX_IOS_HOST\n" + s[start:end] + "#endif\n" + s[end:])
+          print("patched FEX iOS diagnostics")
           PY
           cmake -S FEX -B FEX/build-ios -G Ninja \
             -DCMAKE_SYSTEM_NAME=iOS \
@@ -414,10 +429,6 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET="${IOS_MIN}" \
             -DCMAKE_BUILD_TYPE=Release \
-            -DFEX_IOS_HOST_BUILD=ON \
-            -DCMAKE_C_FLAGS=-DFEX_IOS_HOST=1 \
-            -DCMAKE_CXX_FLAGS=-DFEX_IOS_HOST=1 \
-            -DCMAKE_ASM_FLAGS=-DFEX_IOS_HOST=1 \
             -DTUNE_CPU=none \
             -DBUILD_TESTING=OFF \
             -DENABLE_LTO=OFF \
@@ -425,7 +436,10 @@ jobs:
             -DBUILD_FEX_LINUX_TESTS=OFF \
             -DBUILD_THUNKS=OFF \
             -DBUILD_FEXCONFIG=OFF
-          cmake --build FEX/build-ios -j"$(sysctl -n hw.ncpu)"
+          # Only the static archives the Xcode project links. Building the
+          # default target also builds libFEXCore.dylib, which pulls in the
+          # ARM64EC-only iOS alias symbols that nothing defines.
+          cmake --build FEX/build-ios -j"$(sysctl -n hw.ncpu)" --target FEXCore FEXCore_Base JemallocLibs
 
       - name: Save FEX iOS build cache
         if: steps.fex-cache.outputs.cache-hit != 'true'
