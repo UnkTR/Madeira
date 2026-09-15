@@ -53,6 +53,38 @@ jobs:
           echo "meson: $(meson --version)"
 
       # ---------------------------------------------------------------
+      # llvm-mingw prebuilt toolchain — wine's configure needs this for
+      # --with-mingw. Moved early (before the expensive Metal Toolchain
+      # download / freetype / LLVM-iOS build) so that if wine's configure
+      # or build breaks, we find out in ~2min instead of ~25min.
+      # ---------------------------------------------------------------
+      - name: Download llvm-mingw
+        run: |
+          mkdir -p toolchains
+          curl -L "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_RELEASE}/llvm-mingw-${LLVM_MINGW_RELEASE}-ucrt-macos-universal.tar.xz" \
+            | tar -xJ -C toolchains/
+
+      # ---------------------------------------------------------------
+      # UNRESOLVED: Wine's build-macos configure.
+      # Neither the Madeira repo nor the willfaust/wine fork document
+      # the exact `./configure` invocation used to produce
+      # wine/build-macos/{include/config.h, tools/winebuild/winebuild, ...}.
+      # The line below is a best-effort placeholder based on how similar
+      # ARM64EC Wine ports are typically configured — it WILL likely need
+      # correcting once we see the actual error.
+      # ---------------------------------------------------------------
+      - name: Configure + build Wine (build-macos) [placeholder]
+        working-directory: wine
+        run: |
+          mkdir -p build-macos && cd build-macos
+          ../configure \
+            --host=aarch64-apple-ios \
+            --enable-archs=aarch64,i386 \
+            --with-mingw="$GITHUB_WORKSPACE/toolchains/llvm-mingw-${LLVM_MINGW_RELEASE}-ucrt-macos-universal/bin/clang" \
+            --without-x --without-opengl --without-freetype --disable-tests
+          make -j"$(sysctl -n hw.ncpu)"
+
+      # ---------------------------------------------------------------
       # Metal Toolchain — required by dxmt-ios. This is the biggest
       # unknown: on some Xcode/CI combos this needs an Apple ID signed
       # into Xcode first. If this step fails, that's the first thing
@@ -72,19 +104,6 @@ jobs:
 
       - name: Build freetype for iOS
         run: bash build/freetype-ios/build.sh
-
-      # ---------------------------------------------------------------
-      # llvm-mingw prebuilt toolchain (aarch64-w64-mingw32), used by
-      # dxmt-ios for the PE-side DLLs. The PE DLLs are already vendored
-      # in app/Madeira/aarch64-windows + arm64ec-windows in this repo,
-      # so this may only be needed if dxmt-ios's build.sh insists on
-      # rebuilding them. Kept here for completeness.
-      # ---------------------------------------------------------------
-      - name: Download llvm-mingw
-        run: |
-          mkdir -p toolchains
-          curl -L "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_RELEASE}/llvm-mingw-${LLVM_MINGW_RELEASE}-ucrt-macos-universal.tar.xz" \
-            | tar -xJ -C toolchains/
 
       # ---------------------------------------------------------------
       # LLVM 15.0.7 cross-built for iOS-aarch64 (feeds dxmt-ios's
@@ -135,26 +154,6 @@ jobs:
             -DLLVM_INCLUDE_TESTS=OFF \
             -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_TARGETS_TO_BUILD=AArch64
           cmake --build toolchains/llvm-ios-build
-
-      # ---------------------------------------------------------------
-      # UNRESOLVED: Wine's build-macos configure.
-      # Neither the Madeira repo nor the willfaust/wine fork document
-      # the exact `./configure` invocation used to produce
-      # wine/build-macos/{include/config.h, tools/winebuild/winebuild, ...}.
-      # The line below is a best-effort placeholder based on how similar
-      # ARM64EC Wine ports are typically configured — it WILL likely need
-      # correcting once we see the actual error.
-      # ---------------------------------------------------------------
-      - name: Configure + build Wine (build-macos) [placeholder]
-        working-directory: wine
-        run: |
-          mkdir -p build-macos && cd build-macos
-          ../configure \
-            --host=aarch64-apple-ios \
-            --enable-archs=aarch64,i386 \
-            --with-mingw="$GITHUB_WORKSPACE/toolchains/llvm-mingw-${LLVM_MINGW_RELEASE}-ucrt-macos-universal/bin/clang" \
-            --without-x --without-opengl --disable-tests
-          make -j"$(sysctl -n hw.ncpu)"
 
       - name: Build ntdll-unix
         run: bash build/ntdll-unix/build.sh
