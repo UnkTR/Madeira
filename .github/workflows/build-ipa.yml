@@ -104,11 +104,13 @@ jobs:
       #   #10 xlate_ios_jit  -> non-ARM64EC PE fallback (step below) and
       #                         --enable-archs=aarch64 (no i386; the app
       #                         only ships aarch64/arm64ec)
-      # NOTE: the fork's loader.c references xlate_ios_jit unconditionally
-      # but only defines it under #ifdef __arm64ec__, so the i386/aarch64 PE
-      # ntdll.dll link fails. We only consume build-macos for config.h +
-      # widl-generated headers (include/dwrite_3.h included) + tools, so a
-      # no-op fallback is harmless.
+      #   #11 ios_srcwatch    -> host unix-lib links (e.g. win32u.so) fail on
+      #                         iOS-only symbols the fork adds to dibdrv; we
+      #                         only need config.h + widl headers + tools, so
+      #                         keep going past the host link stage (-k).
+      # NOTE: build-macos is consumed for config.h, the widl-generated
+      # headers (include/dwrite_3.h included) and tools/winebuild; the host
+      # unix .so files are not used by the iOS build scripts.
       # ---------------------------------------------------------------
       - name: Patch Wine fork for non-ARM64EC PE link
         working-directory: wine
@@ -128,7 +130,15 @@ jobs:
             --enable-archs=aarch64 \
             --with-mingw="$GITHUB_WORKSPACE/toolchains/llvm-mingw-${LLVM_MINGW_RELEASE}-ucrt-macos-universal/bin/clang" \
             --without-x --without-opengl --without-freetype --disable-tests
-          make -j"$(sysctl -n hw.ncpu)"
+          # The fork's win32u/dibdrv references iOS-only symbols (e.g.
+          # ios_srcwatch_arm, no weak attribute) that a plain macOS host build
+          # does not define, so host unix-lib links fail. Keep going; the
+          # artifacts we need are produced before/independently of that.
+          make -j"$(sysctl -n hw.ncpu)" -k || \
+            echo "::warning::make reported failures (expected: host unix-lib links); continuing"
+          test -x tools/winebuild/winebuild
+          test -f include/config.h
+          test -f include/dwrite_3.h
 
       # ---------------------------------------------------------------
       # Metal Toolchain — required by dxmt-ios. This is the biggest
