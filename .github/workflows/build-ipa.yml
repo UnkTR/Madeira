@@ -415,11 +415,12 @@ jobs:
           # block itself is unguarded. FEX_IOS_HOST is intentionally NOT set
           # here (a plain iOS FEXCore: the ARM64EC alias hooks live in
           # Source/Windows/ARM64EC and are not linked by the app), so guard
-          # the block to match.
+          # the block to match. NOTE: anchor on the comment opener, otherwise
+          # the inserted #ifdef lands inside the /* ... */ comment.
           p = pathlib.Path("FEX/FEXCore/Source/Interface/Core/Core.cpp")
           s = p.read_text()
-          start = s.index("iOS-Madeira ml316: report ExitToX64 FFS bypasses")
-          end = s.index("iOS-Madeira: refuse to compile obviously-invalid guest RIPs", start)
+          start = s.index("/* iOS-Madeira ml316: report ExitToX64 FFS bypasses")
+          end = s.index("/* iOS-Madeira: refuse to compile obviously-invalid guest RIPs", start)
           p.write_text(s[:start] + "#ifdef FEX_IOS_HOST\n" + s[start:end] + "#endif\n" + s[end:])
           print("patched FEX iOS diagnostics")
           PY
