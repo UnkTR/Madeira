@@ -13,7 +13,10 @@ env:
 
 jobs:
   build:
-    runs-on: macos-15
+    # macos-15 only ships Xcode <26, which doesn't have -downloadComponent.
+    # macos-26 is GitHub's Xcode-26 image (arm64-only, which is what we want
+    # anyway for a native-speed iOS toolchain build).
+    runs-on: macos-26
     timeout-minutes: 350 # stay under the 360min free-tier hard limit
 
     steps:
@@ -27,7 +30,10 @@ jobs:
         run: ls /Applications | grep Xcode
 
       - name: Select latest Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+        run: |
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          sudo xcode-select -s "${LATEST:-/Applications/Xcode.app}"
+          xcodebuild -version
 
       - name: Install cmake/ninja/meson (build deps for freetype/dxmt/llvm)
         run: brew install cmake ninja meson pkg-config
