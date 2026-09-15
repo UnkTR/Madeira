@@ -99,21 +99,33 @@ jobs:
       #   #4 bison < 3       -> brew bison + GITHUB_PATH (see steps above)
       #   #5 freetype        -> --without-freetype
       #   #6 gnutls header   -> CPPFLAGS/LDFLAGS + ac_cv_lib_soname_gnutls
-      #   #9 -Bsymbolic      -> drop --host=aarch64-apple-ios: configure.ac
-      #                         only takes the Darwin branch (which sets
-      #                         -dynamiclib instead of ELF -Bsymbolic/-soname)
-      #                         when $host_os is darwin*, so build-macos must
-      #                         be a native macOS build.
-      # KNOWN GAP: build/ntdll-unix/build.sh also expects
-      # wine/build-arm64ec/include (widl-generated dwrite.h/dwrite_3.h),
-      # which this step does not produce yet.
+      #   #9 -Bsymbolic      -> drop --host=aarch64-apple-ios so configure
+      #                         takes the Darwin branch (-dynamiclib)
+      #   #10 xlate_ios_jit  -> non-ARM64EC PE fallback (step below) and
+      #                         --enable-archs=aarch64 (no i386; the app
+      #                         only ships aarch64/arm64ec)
+      # NOTE: the fork's loader.c references xlate_ios_jit unconditionally
+      # but only defines it under #ifdef __arm64ec__, so the i386/aarch64 PE
+      # ntdll.dll link fails. We only consume build-macos for config.h +
+      # widl-generated headers (include/dwrite_3.h included) + tools, so a
+      # no-op fallback is harmless.
       # ---------------------------------------------------------------
+      - name: Patch Wine fork for non-ARM64EC PE link
+        working-directory: wine
+        run: |
+          cat >> dlls/ntdll/loader.c <<'EOF'
+
+          #if !defined(__arm64ec__)
+          void *xlate_ios_jit( void *ptr ) { return ptr; }
+          #endif
+          EOF
+
       - name: Configure + build Wine (build-macos)
         working-directory: wine
         run: |
           mkdir -p build-macos && cd build-macos
           ../configure \
-            --enable-archs=aarch64,i386 \
+            --enable-archs=aarch64 \
             --with-mingw="$GITHUB_WORKSPACE/toolchains/llvm-mingw-${LLVM_MINGW_RELEASE}-ucrt-macos-universal/bin/clang" \
             --without-x --without-opengl --without-freetype --disable-tests
           make -j"$(sysctl -n hw.ncpu)"
