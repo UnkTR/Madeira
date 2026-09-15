@@ -184,6 +184,16 @@ jobs:
         if: steps.gnutls-cache.outputs.cache-hit != 'true'
         run: bash build/gnutls-ios/build.sh
 
+      # Save immediately: actions/cache's post-step only persists on a
+      # successful job, and this job intentionally keeps going to expose the
+      # next failure, so we must save mid-job.
+      - name: Save GnuTLS iOS stack cache
+        if: steps.gnutls-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: toolchains/gnutls-ios
+          key: gnutls-ios-${{ hashFiles('build/gnutls-ios/build.sh') }}
+
       # ---------------------------------------------------------------
       # LLVM 15.0.7 cross-built for iOS-aarch64 (feeds dxmt-ios's
       # libdxmt_combined.a). Two-stage build per build/dxmt-ios/README.md.
@@ -233,6 +243,13 @@ jobs:
             -DLLVM_INCLUDE_TESTS=OFF \
             -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_TARGETS_TO_BUILD=AArch64
           cmake --build toolchains/llvm-ios-build
+
+      - name: Save LLVM iOS build cache
+        if: steps.llvm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: toolchains/llvm-ios-build
+          key: llvm-ios-${{ env.LLVM_TAG }}-v1
 
       - name: Build ntdll-unix
         run: bash build/ntdll-unix/build.sh
