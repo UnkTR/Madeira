@@ -173,7 +173,15 @@ jobs:
       # build/crypto-unix/gen_gnutls_symtab.sh). Sources are the tarballs
       # vendored under build/gnutls-ios/src/.
       # ---------------------------------------------------------------
+      - name: Cache GnuTLS iOS stack
+        id: gnutls-cache
+        uses: actions/cache@v4
+        with:
+          path: toolchains/gnutls-ios
+          key: gnutls-ios-${{ hashFiles('build/gnutls-ios/build.sh') }}
+
       - name: Build GnuTLS stack for iOS
+        if: steps.gnutls-cache.outputs.cache-hit != 'true'
         run: bash build/gnutls-ios/build.sh
 
       # ---------------------------------------------------------------
@@ -271,7 +279,13 @@ jobs:
         run: bash build/wineserver/build.sh
 
       - name: Build dxmt-ios (libdxmt_combined.a + PE DLLs)
-        run: bash build/dxmt-ios/build.sh
+        run: |
+          bash build/dxmt-ios/build.sh || {
+            for f in build/dxmt-ios/obj/*.err; do
+              if [ -s "$f" ]; then echo "===== $f ====="; cat "$f"; fi
+            done
+            exit 1
+          }
 
       # ---------------------------------------------------------------
       # App build + ad-hoc export with a free Apple ID / Personal Team,
