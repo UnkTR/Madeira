@@ -227,6 +227,41 @@ jobs:
       - name: Build win32u-unix
         run: bash build/win32u-unix/build.sh
 
+      # ---------------------------------------------------------------
+      # build/wineserver/build.sh only *patches* a prebuilt
+      # obj/libwineserver.a (or app/Madeira/libwineserver.a) — it never
+      # builds the base archive, which was a local-only artifact for the
+      # original author. Bootstrap it by compiling the non-patched
+      # server/*.c with the same flags build.sh uses; build.sh then swaps
+      # in its patched/iOS-override objects.
+      # ---------------------------------------------------------------
+      - name: Bootstrap wineserver base archive
+        run: |
+          set -e
+          WD=build/wineserver
+          OBJ=$WD/obj
+          WINE_SRC=wine
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          REPLACED="request main mach unicode fd object async process window user mapping class region queue winstation thread sock"
+          mkdir -p "$OBJ/base"
+          for src in "$WINE_SRC"/server/*.c; do
+            n=$(basename "$src" .c)
+            case " $REPLACED " in *" $n "*) continue ;; esac
+            echo "  base $n"
+            xcrun -sdk iphoneos clang -arch arm64 -isysroot "$SDK" -miphoneos-version-min=17.0 -O2 \
+              -I"$WINE_SRC/include" -I"$WINE_SRC/include/wine" \
+              -I"$WINE_SRC/build-macos/include" \
+              -I"$WD" -I"$WINE_SRC/server" -I"build/ntdll-unix/shims" \
+              -include "$WD/config_ios.h" -include stdarg.h \
+              -include "$WD/unicode_fix.h" -include "$WD/wineserver_ios_kill.h" \
+              -DBINDIR=\"/usr/local/bin\" -DDATADIR=\"/usr/local/share\" \
+              -D__WINESRC__ -DWINE_IOS=1 -Dmain=wineserver_main \
+              -Wno-implicit-function-declaration \
+              -c "$src" -o "$OBJ/base/$n.o"
+          done
+          ar rcs "$OBJ/libwineserver.a" "$OBJ"/base/*.o
+          echo "base objects: $(ls "$OBJ"/base | wc -l)"
+
       - name: Build wineserver
         run: bash build/wineserver/build.sh
 
