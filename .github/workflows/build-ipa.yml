@@ -350,6 +350,10 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET="${IOS_MIN}" \
             -DCMAKE_BUILD_TYPE=Release \
+            -DFEX_IOS_HOST_BUILD=ON \
+            -DCMAKE_C_FLAGS=-DFEX_IOS_HOST=1 \
+            -DCMAKE_CXX_FLAGS=-DFEX_IOS_HOST=1 \
+            -DCMAKE_ASM_FLAGS=-DFEX_IOS_HOST=1 \
             -DTUNE_CPU=none \
             -DBUILD_TESTING=OFF \
             -DENABLE_LTO=OFF \
