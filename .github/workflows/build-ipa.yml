@@ -208,10 +208,14 @@ jobs:
           key: llvm-ios-${{ env.LLVM_TAG }}-v1
 
       - name: Clone LLVM source
-        if: steps.llvm-cache.outputs.cache-hit != 'true'
+        # The cached tree only holds toolchains/llvm-ios-build, but dxmt's
+        # LLVM_INCLUDES also points at toolchains/llvm-project/llvm/include,
+        # so the source must be present even on a cache hit.
         run: |
-          git clone --depth 1 --branch "${LLVM_TAG}" \
-            https://github.com/llvm/llvm-project.git toolchains/llvm-project
+          if [ ! -d toolchains/llvm-project/llvm ]; then
+            git clone --depth 1 --branch "${LLVM_TAG}" \
+              https://github.com/llvm/llvm-project.git toolchains/llvm-project
+          fi
 
       - name: Patch AddLLVM.cmake for iOS dead_strip
         if: steps.llvm-cache.outputs.cache-hit != 'true'
