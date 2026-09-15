@@ -35,10 +35,22 @@ jobs:
           sudo xcode-select -s "${LATEST:-/Applications/Xcode.app}"
           xcodebuild -version
 
-      - name: Install cmake/ninja/meson/bison (build deps)
+      - name: Install cmake/ninja/meson/bison + gnutls (build deps)
         run: |
-          brew install cmake ninja meson pkg-config bison
+          brew install cmake ninja meson pkg-config bison gnutls
           echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          # Wine's configure probes gnutls with pkg-config, but on this image
+          # gnutls/gnutls.h resolves from a default include path while
+          # `-lgnutls` does not. That makes HAVE_GNUTLS_CIPHER_INIT get
+          # defined while GNUTLS_CFLAGS ends up empty (WINE_CHECK_SONAME's
+          # not-found branch resets it), so `make` later dies on
+          # ../dlls/bcrypt/gnutls.c:34: 'gnutls/gnutls.h' file not found.
+          # Pin GNUTLS_CFLAGS/GNUTLS_LIBS to the Homebrew keg so configure and
+          # make agree, and so the host build-macos/include/config.h keeps
+          # gnutls enabled for the iOS bcrypt/secur32 unixlibs.
+          echo "PKG_CONFIG_PATH=$(brew --prefix gnutls)/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
+          echo "GNUTLS_CFLAGS=-I$(brew --prefix gnutls)/include" >> "$GITHUB_ENV"
+          echo "GNUTLS_LIBS=-L$(brew --prefix gnutls)/lib -lgnutls" >> "$GITHUB_ENV"
 
       - name: Sanity check toolchain versions (fail fast)
         run: |
@@ -51,6 +63,7 @@ jobs:
           echo "cmake: $(cmake --version | head -1)"
           echo "ninja: $(ninja --version)"
           echo "meson: $(meson --version)"
+          echo "gnutls: $(pkg-config --modversion gnutls)"
 
       # ---------------------------------------------------------------
       # llvm-mingw prebuilt toolchain — wine's configure needs this for
@@ -65,15 +78,17 @@ jobs:
             | tar -xJ -C toolchains/
 
       # ---------------------------------------------------------------
-      # UNRESOLVED: Wine's build-macos configure.
-      # Neither the Madeira repo nor the willfaust/wine fork document
-      # the exact `./configure` invocation used to produce
-      # wine/build-macos/{include/config.h, tools/winebuild/winebuild, ...}.
-      # The line below is a best-effort placeholder based on how similar
-      # ARM64EC Wine ports are typically configured — it WILL likely need
-      # correcting once we see the actual error.
+      # Wine's build-macos configure. Neither the Madeira repo nor the
+      # willfaust/wine fork documents the original invocation, so this is
+      # the best-effort reconstruction. Observed CI failures and fixes:
+      #   #4 bison < 3       -> brew bison + GITHUB_PATH (see steps above)
+      #   #5 freetype        -> --without-freetype
+      #   #6 gnutls header   -> GNUTLS_CFLAGS/GNUTLS_LIBS pinned to brew keg
+      # KNOWN GAP: build/ntdll-unix/build.sh also expects
+      # wine/build-arm64ec/include (widl-generated dwrite.h/dwrite_3.h),
+      # which this step does not produce yet.
       # ---------------------------------------------------------------
-      - name: Configure + build Wine (build-macos) [placeholder]
+      - name: Configure + build Wine (build-macos)
         working-directory: wine
         run: |
           mkdir -p build-macos && cd build-macos
