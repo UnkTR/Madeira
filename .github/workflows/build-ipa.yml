@@ -337,6 +337,26 @@ jobs:
           echo "libdxmt_combined.a: $(wc -c < libdxmt_combined.a | tr -d ' ') bytes"
 
       # ---------------------------------------------------------------
+      # FEX iOS static libs. app/Madeira.xcodeproj links
+      # ../../FEX/build-ios/{FEXCore/Source/libFEXCore*.a,External/...};
+      # FEX's CMakeLists supports CMAKE_SYSTEM_NAME=iOS, so configure a
+      # Release arm64 iOS build (no LTO, no tests/thunks/config).
+      # ---------------------------------------------------------------
+      - name: Build FEX for iOS
+        run: |
+          cmake -S FEX -B FEX/build-ios -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="${IOS_MIN}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_LTO=OFF \
+            -DENABLE_CCACHE=OFF \
+            -DBUILD_FEX_LINUX_TESTS=OFF \
+            -DBUILD_THUNKS=OFF \
+            -DBUILD_FEXCONFIG=OFF
+          cmake --build FEX/build-ios -j"$(sysctl -n hw.ncpu)"
+
+      # ---------------------------------------------------------------
       # Unsigned build + manual IPA packaging, same approach that already
       # worked for NuvioMobile-iOS. Signing in CI needs a team plus
       # certificates/provisioning profiles (APPLE_TEAM_ID is unset here, and
