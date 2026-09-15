@@ -295,6 +295,24 @@ jobs:
       - name: Build wineserver
         run: bash build/wineserver/build.sh
 
+      # ---------------------------------------------------------------
+      # build/dxmt-ios/build.sh compiles airconv_context.cpp which includes
+      # air_msad.h / air_samplepos.h / air_tessellation.h, and adds
+      # -I.../shader-headers, but nothing generates them. Reproduce DXMT's
+      # meson generators (airconv/shaders/*.metal -> .air via the Metal
+      # toolchain, then xxd -n <name> -i into a C header).
+      # ---------------------------------------------------------------
+      - name: Generate dxmt shader headers
+        run: |
+          set -e
+          mkdir -p build/dxmt-ios/shader-headers
+          cd research/dxmt/src/airconv/shaders
+          for s in air_msad air_samplepos air_tessellation; do
+            echo "  generating $s.h"
+            xcrun -sdk macosx metal -std=metal3.1 --target=air64-apple-macos14.0 -o "$s.air" -c "$s.metal"
+            xxd -n "$s" -i "$s.air" "$GITHUB_WORKSPACE/build/dxmt-ios/shader-headers/$s.h"
+          done
+
       - name: Build dxmt-ios (libdxmt_combined.a + PE DLLs)
         run: |
           bash build/dxmt-ios/build.sh || {
