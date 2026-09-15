@@ -342,8 +342,31 @@ jobs:
       # FEX's CMakeLists supports CMAKE_SYSTEM_NAME=iOS, so configure a
       # Release arm64 iOS build (no LTO, no tests/thunks/config).
       # ---------------------------------------------------------------
+      - name: Cache FEX iOS build
+        id: fex-cache
+        uses: actions/cache@v4
+        with:
+          path: FEX/build-ios
+          key: fex-ios-${{ hashFiles('FEX/CMakeLists.txt') }}-v1
+
       - name: Build FEX for iOS
+        if: steps.fex-cache.outputs.cache-hit != 'true'
         run: |
+          # The fork's IosLogUnimplementedCASPAL() is a diagnostic that calls
+          # Windows APIs (MEMORY_BASIC_INFORMATION/VirtualQuery/MEM_IMAGE)
+          # with no non-Windows guard, which cannot compile on iOS. Replace it
+          # with a no-op.
+          python3 - <<'PY'
+          import pathlib
+          p = pathlib.Path("FEX/FEXCore/Source/Utils/ArchHelpers/Arm64.cpp")
+          s = p.read_text()
+          start = s.index("static void IosLogUnimplementedCASPAL")
+          end = s.index("static bool HandleCASPAL", start)
+          stub = ("static void IosLogUnimplementedCASPAL(uint32_t Size, uint64_t* GPRs, uint32_t AddressReg) {\n"
+                  "  (void)Size; (void)GPRs; (void)AddressReg;\n}\n\n")
+          p.write_text(s[:start] + stub + s[end:])
+          print("patched IosLogUnimplementedCASPAL")
+          PY
           cmake -S FEX -B FEX/build-ios -G Ninja \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_SYSTEM_PROCESSOR=arm64 \
@@ -362,6 +385,13 @@ jobs:
             -DBUILD_THUNKS=OFF \
             -DBUILD_FEXCONFIG=OFF
           cmake --build FEX/build-ios -j"$(sysctl -n hw.ncpu)"
+
+      - name: Save FEX iOS build cache
+        if: steps.fex-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: FEX/build-ios
+          key: fex-ios-${{ hashFiles('FEX/CMakeLists.txt') }}-v1
 
       # ---------------------------------------------------------------
       # Unsigned build + manual IPA packaging, same approach that already
