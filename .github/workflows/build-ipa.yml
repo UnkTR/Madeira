@@ -326,42 +326,48 @@ jobs:
             exit 1
           }
 
-      # ---------------------------------------------------------------
-      # App build + ad-hoc export with a free Apple ID / Personal Team,
-      # same approach that already worked for NuvioMobile-iOS.
-      # ---------------------------------------------------------------
-      - name: Archive Madeira.app
+      # build/dxmt-ios/README.md: combine the DXMT unix objects with the
+      # LLVM iOS static libs into the single archive Xcode links.
+      - name: Combine libdxmt_combined.a
         run: |
-          xcodebuild archive \
+          cd build/dxmt-ios
+          xcrun -sdk iphoneos libtool -static -o libdxmt_combined.a \
+            obj/*.o ../../toolchains/llvm-ios-build/lib/*.a
+          cp libdxmt_combined.a ../../app/Madeira/
+          echo "libdxmt_combined.a: $(wc -c < libdxmt_combined.a | tr -d ' ') bytes"
+
+      # ---------------------------------------------------------------
+      # Unsigned build + manual IPA packaging, same approach that already
+      # worked for NuvioMobile-iOS. Signing in CI needs a team plus
+      # certificates/provisioning profiles (APPLE_TEAM_ID is unset here, and
+      # Automatic signing aborts with "requires a development team"), so
+      # build unsigned and let the user re-sign locally.
+      # ---------------------------------------------------------------
+      - name: Build unsigned Madeira.app
+        run: |
+          xcodebuild build \
             -project app/Madeira.xcodeproj \
             -scheme Madeira \
             -configuration Release \
-            -archivePath "$PWD/build/Madeira.xcarchive" \
+            -sdk iphoneos \
             -destination "generic/platform=iOS" \
-            CODE_SIGN_STYLE=Automatic \
-            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}"
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" DEVELOPMENT_TEAM="" \
+            -derivedDataPath "$PWD/build/dd"
 
-      - name: Export IPA
+      - name: Package unsigned IPA
         run: |
-          cat > ExportOptions.plist <<'PLIST'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key><string>development</string>
-            <key>signingStyle</key><string>automatic</string>
-            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
-            <key>compileBitcode</key><false/>
-          </dict>
-          </plist>
-          PLIST
-          xcodebuild -exportArchive \
-            -archivePath "$PWD/build/Madeira.xcarchive" \
-            -exportPath "$PWD/build/ipa" \
-            -exportOptionsPlist ExportOptions.plist
+          cd "$PWD/build/dd/Build/Products/Release-iphoneos"
+          mkdir -p Payload
+          APP_PATH=$(find . -maxdepth 1 -name "*.app" | head -n 1)
+          cp -r "$APP_PATH" Payload/
+          zip -r Madeira-unsigned.ipa Payload
+          mkdir -p "$GITHUB_WORKSPACE/output"
+          cp Madeira-unsigned.ipa "$GITHUB_WORKSPACE/output/"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: Madeira-ipa
-          path: build/ipa/*.ipa
+          path: output/Madeira-unsigned.ipa
+          if-no-files-found: error
